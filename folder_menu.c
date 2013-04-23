@@ -30,7 +30,21 @@ void main()
 
 	if(argc < 2)
 	{
-		MessageBox(NULL, L"Usage:\nqfmenu.exe folder\n\nThe folder can either be an absolute path or a CSIDL identifier.", L"Quick Folder Menu v" DEF_VERSION, MB_ICONASTERISK);
+		MessageBox(
+			NULL, 
+			L"Usage:\n"
+			L"qfmenu.exe folder\n"
+			L"\n"
+			L"The folder can either be a path or a CSIDL identifier.\n"
+			L"\n"
+			L"Examples:\n"
+			L"qfmenu.exe C:\\\n"
+			L"qfmenu.exe \"D:\\New Folder\"\n"
+			L"qfmenu.exe 0x0011", 
+			L"Quick Folder Menu v" DEF_VERSION, 
+			MB_ICONASTERISK
+		);
+
 		freeargv(argv);
 		ExitProcess(0);
 	}
