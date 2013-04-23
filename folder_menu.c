@@ -4,7 +4,10 @@
 #include <shlguid.h>
 #include <shlobj.h>
 #include <initguid.h>
+#include "args.h"
 #include "buffer.h"
+
+#define DEF_VERSION L"1.0"
 
 #ifndef	SMSET_USEBKICONEXTRACTION
 #define SMSET_USEBKICONEXTRACTION	0x00000008
@@ -13,10 +16,33 @@
 // {ECD4FC4F-521C-11D0-B792-00A0C90312E1}
 DEFINE_GUID(CLSID_MenuDeskBar, 0xecd4fc4f, 0x521c, 0x11d0, 0xb7, 0x92, 0x0, 0xa0, 0xc9, 0x3, 0x12, 0xe1);
 
-IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath);
+WCHAR *StrToDword(WCHAR *pszStr, DWORD *pdw);
+IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild);
 
 void main()
 {
+	int argc;
+	WCHAR **argv;
+	WCHAR *pPath;
+	int csild;
+
+	setargv(&argc, &argv);
+
+	if(argc < 2)
+	{
+		MessageBox(NULL, L"Usage:\nqfmenu.exe folder\n\nThe folder can either be an absolute path or a CSIDL identifier.", L"Quick Folder Menu v" DEF_VERSION, MB_ICONASTERISK);
+		freeargv(argv);
+		ExitProcess(0);
+	}
+
+	if(*StrToDword(argv[1], (DWORD *)&csild) != L'\0')
+	{
+		csild = 0;
+		pPath = argv[1];
+	}
+	else
+		pPath = NULL;
+
 	if(OleInitialize(NULL) == S_OK)
 	{
 		POINT pt;
@@ -27,7 +53,7 @@ void main()
 
 		GetCursorPos(&pt);
 
-		pIMenuBand = PopupMenu(pt.x, pt.y, L"C:\\");
+		pIMenuBand = PopupMenu(pt.x, pt.y, pPath, csild);
 		if(pIMenuBand)
 		{
 			while((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
@@ -57,10 +83,70 @@ void main()
 	}
 
 	OleUninitialize();
+
+	freeargv(argv);
 	ExitProcess(0);
 }
 
-IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath)
+WCHAR *StrToDword(WCHAR *pszStr, DWORD *pdw)
+{
+	BOOL bMinus;
+	DWORD dw, dw2;
+
+	if(*pszStr == L'-')
+	{
+		bMinus = TRUE;
+		pszStr++;
+	}
+	else
+		bMinus = FALSE;
+
+	dw = 0;
+
+	if(pszStr[0] == L'0' && (pszStr[1] == L'x' || pszStr[1] == L'X'))
+	{
+		pszStr += 2;
+
+		while(*pszStr != L'\0')
+		{
+			if(*pszStr >= L'0' && *pszStr <= L'9')
+				dw2 = *pszStr - L'0';
+			else if(*pszStr >= L'a' && *pszStr <= L'f')
+				dw2 = *pszStr - 'a' + 0x0A;
+			else if(*pszStr >= L'A' && *pszStr <= L'F')
+				dw2 = *pszStr - 'A' + 0x0A;
+			else
+				break;
+
+			dw <<= 0x04;
+			dw |= dw2;
+			pszStr++;
+		}
+	}
+	else
+	{
+		while(*pszStr != L'\0')
+		{
+			if(*pszStr >= L'0' && *pszStr <= L'9')
+				dw2 = *pszStr - L'0';
+			else
+				break;
+
+			dw *= 10;
+			dw += dw2;
+			pszStr++;
+		}
+	}
+
+	if(bMinus)
+		*pdw = (DWORD)-(long)dw; // :)
+	else
+		*pdw = dw;
+
+	return pszStr;
+}
+
+IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 {
 	HRESULT hr;
 	IShellMenu *pIShellMenu;
@@ -81,7 +167,11 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath)
 		{
 			LPITEMIDLIST pidl;
 
-			hr = SHILCreateFromPath(pPath, &pidl, NULL);
+			if(pPath)
+				hr = SHILCreateFromPath(pPath, &pidl, NULL);
+			else
+				hr = SHGetSpecialFolderLocation(NULL, csild, &pidl);
+
 			if(SUCCEEDED(hr))
 			{
 				IShellFolder *pIShellFolder;
@@ -165,7 +255,7 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath)
 
 						hr = pIMenuPopup->Popup(&ptl, &rcl, MPPF_SETFOCUS | MPPF_BOTTOM);
 						if(SUCCEEDED(hr))
-							pIDeskBand->QueryInterface(&pIMenuBand);
+							hr = pIDeskBand->QueryInterface(&pIMenuBand);
 					}
 
 					pIBandSite->Release();
