@@ -18,6 +18,7 @@ DEFINE_GUID(CLSID_MenuDeskBar, 0xecd4fc4f, 0x521c, 0x11d0, 0xb7, 0x92, 0x0, 0xa0
 
 WCHAR *StrToDword(WCHAR *pszStr, DWORD *pdw);
 IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild);
+VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand);
 
 void main()
 {
@@ -70,10 +71,20 @@ void main()
 		pIMenuBand = PopupMenu(pt.x, pt.y, pPath, csild);
 		if(pIMenuBand)
 		{
+			UINT_PTR uTimerId;
+
+			uTimerId = SetTimer(NULL, 0, 10, NULL);
+
 			while((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
 			{
 				if(bRet == -1)
 					break;
+
+				if(msg.message == WM_TIMER && msg.wParam == uTimerId)
+				{
+					CheckForegroundWindowProc(pIMenuBand);
+					continue;
+				}
 
 				switch(pIMenuBand->IsMenuMessage(&msg))
 				{
@@ -91,6 +102,9 @@ void main()
 					break;
 				}
 			}
+
+			if(uTimerId)
+				KillTimer(NULL, uTimerId);
 
 			pIMenuBand->Release();
 		}
@@ -288,4 +302,27 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 		return pIMenuBand;
 
 	return NULL;
+}
+
+VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand)
+{
+	HWND hForegroundWnd;
+	DWORD dwProcessId;
+	IOleCommandTarget *pIOleCommandTarget;
+	HRESULT hr;
+
+	hForegroundWnd = GetForegroundWindow();
+	if(hForegroundWnd)
+	{
+		GetWindowThreadProcessId(hForegroundWnd, &dwProcessId);
+		if(dwProcessId == GetCurrentProcessId())
+			return;
+	}
+
+	hr = pIMenuBand->QueryInterface(&pIOleCommandTarget);
+	if(SUCCEEDED(hr))
+	{
+		pIOleCommandTarget->Exec(&CLSID_MenuBand, 22, 0, NULL, NULL);
+		pIOleCommandTarget->Release();
+	}
 }
