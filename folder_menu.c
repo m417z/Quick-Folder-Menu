@@ -12,6 +12,11 @@
 #define SMSET_USEBKICONEXTRACTION	0x00000008
 #endif
 
+// Undocumented command id in the CLSID_MenuBand command group that dismisses
+// the menu band. Used to tear the popup down when the foreground process
+// changes.
+#define MBAND_CMDID_CLOSE 22
+
 // {ECD4FC4F-521C-11D0-B792-00A0C90312E1}
 DEFINE_GUID(CLSID_MenuDeskBar, 0xecd4fc4f, 0x521c, 0x11d0, 0xb7, 0x92, 0x0, 0xa0, 0xc9, 0x3, 0x12, 0xe1);
 
@@ -19,7 +24,7 @@ WCHAR *StrToDword(WCHAR *pszStr, DWORD *pdw);
 IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild);
 VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand);
 
-void main()
+int main(void)
 {
 	int argc;
 	WCHAR **argv;
@@ -33,7 +38,7 @@ void main()
 	if(argc < 2)
 	{
 		MessageBox(
-			NULL, 
+			NULL,
 			L"Usage:\n"
 			L"qfmenu.exe folder\n"
 			L"\n"
@@ -42,8 +47,8 @@ void main()
 			L"Examples:\n"
 			L"qfmenu.exe C:\\\n"
 			L"qfmenu.exe \"D:\\New Folder\"\n"
-			L"qfmenu.exe 0x0011", 
-			L"Quick Folder Menu v" DEF_VERSION, 
+			L"qfmenu.exe 0x0011",
+			L"Quick Folder Menu v" DEF_VERSION,
 			MB_ICONASTERISK
 		);
 
@@ -59,7 +64,7 @@ void main()
 	else
 		pPath = NULL;
 
-	if(OleInitialize(NULL) == S_OK)
+	if(SUCCEEDED(OleInitialize(NULL)))
 	{
 		POINT pt;
 		IMenuBand *pIMenuBand;
@@ -179,7 +184,7 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 {
 	HRESULT hr;
 	IShellMenu *pIShellMenu;
-	IDeskBand *pIDeskBand;
+	IDeskBand *pIDeskBand = NULL;
 	IMenuBand *pIMenuBand;
 
 	hr = CoCreateInstance(CLSID_MenuBand, NULL, CLSCTX_INPROC_SERVER, IID_IShellMenu, (void**)&pIShellMenu);
@@ -197,7 +202,7 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 			LPITEMIDLIST pidl;
 
 			if(pPath)
-				hr = SHILCreateFromPath(pPath, &pidl, NULL);
+				hr = SHParseDisplayName(pPath, NULL, &pidl, 0, NULL);
 			else
 				hr = SHGetSpecialFolderLocation(NULL, csild, &pidl);
 
@@ -210,26 +215,10 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 				if(SUCCEEDED(hr))
 				{
 					// Folder assignment to menu
-					hr = pIShellMenu->SetShellFolder(pIShellFolder, pidl, NULL, SMSET_BOTTOM | SMSET_USEBKICONEXTRACTION);	// I want to also specify: but the value is unknown | SMSET_HASEXPANDABLEFOLDERS)
-
-					IMenuPopup *pIMenuPopup;
+					hr = pIShellMenu->SetShellFolder(pIShellFolder, pidl, NULL, SMSET_BOTTOM | SMSET_USEBKICONEXTRACTION);
 
 					if(SUCCEEDED(hr))
-						hr = pIShellMenu->QueryInterface(&pIMenuPopup);
-
-					if(SUCCEEDED(hr))
-					{
-						IDeskBar *pIDeskBar;
-
-						hr = pIMenuPopup->QueryInterface(&pIDeskBar);
-						if(SUCCEEDED(hr))
-						{
-							hr = pIDeskBar->QueryInterface(&pIDeskBand);
-							pIDeskBar->Release();
-						}
-
-						pIMenuPopup->Release();
-					}
+						hr = pIShellMenu->QueryInterface(&pIDeskBand);
 
 					pIShellFolder->Release();
 				}
@@ -243,8 +232,8 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 		pIShellMenu->Release();
 	}
 
-	// Display the pop-up menu IShellMenu the (IDeskBand)
-	if(SUCCEEDED(hr))
+	// Host the band inside a CLSID_MenuDeskBar and pop it up.
+	if(pIDeskBand)
 	{
 		IUnknown *pIUnknown;
 
@@ -296,6 +285,10 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 			pIUnknown->Release();
 		}
 
+		// The desk bar's window holds an internal self-reference while the
+		// popup is shown, so the menu stays alive after we drop these local
+		// references. It is torn down via MBAND_CMDID_CLOSE (see
+		// CheckForegroundWindowProc) or normal user dismissal.
 		pIDeskBand->Release();
 	}
 
@@ -323,7 +316,7 @@ VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand)
 	hr = pIMenuBand->QueryInterface(&pIOleCommandTarget);
 	if(SUCCEEDED(hr))
 	{
-		pIOleCommandTarget->Exec(&CLSID_MenuBand, 22, 0, NULL, NULL);
+		pIOleCommandTarget->Exec(&CLSID_MenuBand, MBAND_CMDID_CLOSE, 0, NULL, NULL);
 		pIOleCommandTarget->Release();
 	}
 }
