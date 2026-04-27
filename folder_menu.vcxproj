@@ -169,12 +169,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="args.c" />
-    <ClCompile Include="folder_menu.c" />
+        <ClCompile Include="folder_menu.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="args.h" />
-    <ClInclude Include="buffer.h" />
+        <ClInclude Include="buffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -4,7 +4,6 @@
 #include <shlguid.h>
 #include <shlobj.h>
 #include <initguid.h>
-#include "args.h"
 #include "buffer.h"
 
 #define DEF_VERSION L"1.1"
@@ -27,7 +26,9 @@ void main()
 	WCHAR *pPath;
 	int csild;
 
-	setargv(&argc, &argv);
+	argv = CommandLineToArgvW(GetCommandLine(), &argc);
+	if(!argv)
+		ExitProcess(0);
 
 	if(argc < 2)
 	{
@@ -46,7 +47,7 @@ void main()
 			MB_ICONASTERISK
 		);
 
-		freeargv(argv);
+		LocalFree(argv);
 		ExitProcess(0);
 	}
 
@@ -112,7 +113,7 @@ void main()
 
 	OleUninitialize();
 
-	freeargv(argv);
+	LocalFree(argv);
 	ExitProcess(0);
 }
 
