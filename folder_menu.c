@@ -22,7 +22,10 @@ DEFINE_GUID(CLSID_MenuDeskBar, 0xecd4fc4f, 0x521c, 0x11d0, 0xb7, 0x92, 0x0, 0xa0
 
 WCHAR *StrToDword(WCHAR *pszStr, DWORD *pdw);
 IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild);
-VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand);
+VOID CALLBACK ForegroundChangedProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
+	LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime);
+
+static IMenuBand *g_pIMenuBand;
 
 int main(void)
 {
@@ -77,20 +80,20 @@ int main(void)
 		pIMenuBand = PopupMenu(pt.x, pt.y, pPath, csild);
 		if(pIMenuBand)
 		{
-			UINT_PTR uTimerId;
+			HWINEVENTHOOK hHook;
 
-			uTimerId = SetTimer(NULL, 0, 10, NULL);
+			g_pIMenuBand = pIMenuBand;
+
+			hHook = SetWinEventHook(
+				EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+				NULL, ForegroundChangedProc,
+				0, 0,
+				WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
 			while((bRet = GetMessage(&msg, NULL, 0, 0)) != 0)
 			{
 				if(bRet == -1)
 					break;
-
-				if(msg.message == WM_TIMER && msg.wParam == uTimerId)
-				{
-					CheckForegroundWindowProc(pIMenuBand);
-					continue;
-				}
 
 				switch(pIMenuBand->IsMenuMessage(&msg))
 				{
@@ -109,8 +112,8 @@ int main(void)
 				}
 			}
 
-			if(uTimerId)
-				KillTimer(NULL, uTimerId);
+			if(hHook)
+				UnhookWinEvent(hHook);
 
 			pIMenuBand->Release();
 		}
@@ -288,7 +291,7 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 		// The desk bar's window holds an internal self-reference while the
 		// popup is shown, so the menu stays alive after we drop these local
 		// references. It is torn down via MBAND_CMDID_CLOSE (see
-		// CheckForegroundWindowProc) or normal user dismissal.
+		// ForegroundChangedProc) or normal user dismissal.
 		pIDeskBand->Release();
 	}
 
@@ -298,22 +301,13 @@ IMenuBand *PopupMenu(long nX, long nY, WCHAR *pPath, int csild)
 	return NULL;
 }
 
-VOID CALLBACK CheckForegroundWindowProc(IMenuBand *pIMenuBand)
+VOID CALLBACK ForegroundChangedProc(HWINEVENTHOOK hook, DWORD event, HWND hwnd,
+	LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime)
 {
-	HWND hForegroundWnd;
-	DWORD dwProcessId;
 	IOleCommandTarget *pIOleCommandTarget;
 	HRESULT hr;
 
-	hForegroundWnd = GetForegroundWindow();
-	if(hForegroundWnd)
-	{
-		GetWindowThreadProcessId(hForegroundWnd, &dwProcessId);
-		if(dwProcessId == GetCurrentProcessId())
-			return;
-	}
-
-	hr = pIMenuBand->QueryInterface(&pIOleCommandTarget);
+	hr = g_pIMenuBand->QueryInterface(&pIOleCommandTarget);
 	if(SUCCEEDED(hr))
 	{
 		pIOleCommandTarget->Exec(&CLSID_MenuBand, MBAND_CMDID_CLOSE, 0, NULL, NULL);
