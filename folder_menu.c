@@ -6,7 +6,7 @@
 #include <initguid.h>
 #include "buffer.h"
 
-#define DEF_VERSION L"1.2"
+#define DEF_VERSION L"1.3"
 
 #ifndef	SMSET_USEBKICONEXTRACTION
 #define SMSET_USEBKICONEXTRACTION	0x00000008
