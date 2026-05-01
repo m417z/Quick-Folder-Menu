@@ -81,6 +81,7 @@ int main(void)
 		if(pIMenuBand)
 		{
 			HWINEVENTHOOK hHook;
+			DWORD dwStart, dwElapsed;
 
 			g_pIMenuBand = pIMenuBand;
 
@@ -114,6 +115,24 @@ int main(void)
 
 			if(hHook)
 				UnhookWinEvent(hHook);
+
+			// Pump messages for up to one second so deferred work posted by the
+			// menu band (e.g. shortcut invocation) can run to completion. See:
+			// https://devblogs.microsoft.com/oldnewthing/20060126-00/?p=32513
+			dwStart = GetTickCount();
+			while((dwElapsed = GetTickCount() - dwStart) < 1000)
+			{
+				DWORD dwStatus = MsgWaitForMultipleObjectsEx(
+					0, NULL, 1000 - dwElapsed, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+				if(dwStatus == WAIT_TIMEOUT)
+					break;
+
+				while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+				{
+					TranslateMessage(&msg);
+					DispatchMessage(&msg);
+				}
+			}
 
 			pIMenuBand->Release();
 		}
